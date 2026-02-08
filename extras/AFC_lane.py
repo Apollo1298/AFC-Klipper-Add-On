@@ -142,6 +142,8 @@ class AFCLane:
         self.td1_when_loaded    = config.getboolean("capture_td1_when_loaded", None)
         self.td1_device_id      = config.get("td1_device_id", None)
 
+        self.post_prep_macro    = config.get("post_prep_macro", None)  # Macro to call after loading filament during prep callback
+
 
         self.printer.register_event_handler("AFC_unit_{}:connect".format(self.unit),self.handle_unit_connect)
 
@@ -384,6 +386,7 @@ class AFCLane:
         if self.max_move_dis                is None: self.max_move_dis      = self.unit_obj.max_move_dis
         if self.td1_when_loaded             is None: self.td1_when_loaded   = self.unit_obj.td1_when_loaded
         if self.td1_device_id               is None: self.td1_device_id     = self.unit_obj.td1_device_id
+        if self.post_prep_macro             is None: self.post_prep_macro   = self.unit_obj.post_prep_macro
 
         if self.rev_long_moves_speed_factor < 0.5: self.rev_long_moves_speed_factor = 0.5
         if self.rev_long_moves_speed_factor > 1.2: self.rev_long_moves_speed_factor = 1.2
@@ -640,6 +643,7 @@ class AFCLane:
                 # Check if user wants to get TD-1 data when loading
                 if not self.tool_loaded:
                     self._prep_capture_td1()
+                self._post_prep_user_macro()
             else:
                 # Don't run if user disabled sensor in gui
                 if not self.fila_load.runout_helper.sensor_enabled and self.afc.function.is_printing():
@@ -724,6 +728,7 @@ class AFCLane:
                         self.status = AFCLaneState.LOADED
                         self.unit_obj.lane_loaded(self)
                         self.afc.spool._set_values(self)
+                        self._post_prep_user_macro()
                         # Check if user wants to get TD-1 data when loading
                         # TODO: When implementing multi-extruder this could still happen if a lane is loaded for a
                         # different extruder/hub
@@ -775,6 +780,14 @@ class AFCLane:
                 self.unit_obj.lane_unloaded(self)
 
         self.afc.save_vars()
+
+    def _post_prep_user_macro(self):
+        """
+        Function to call macro once filament has successfully been loaded during prep callback
+        """
+        if self.afc.function.check_macro_present(self.post_prep_macro):
+            cmd = f"{self.post_prep_macro} LANE={self.name}"
+            self.gcode.run_script_from_command(cmd)
 
     def do_enable(self, enable):
         if self.drive_stepper is not None:
@@ -1484,8 +1497,6 @@ class AFCLane:
             response['td1_color']       = self.td1_data['color'] if "color" in self.td1_data else ''
             response['td1_scan_time']   = self.td1_data['scan_time'] if "scan_time" in self.td1_data else ''
         return response
-
-
 
 def load_config_prefix(config):
     return AFCLane(config)
