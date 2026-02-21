@@ -1,3 +1,10 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-q"
+
 [tool.ruff]
 exclude = [
     # Standard exclusions
@@ -8,6 +15,9 @@ exclude = [
 
     # Optional: exclude Klipper source tree if just wrapping
     "klipper",
+
+    # Test files — linting rules don't apply to the test suite
+    "tests",
 ]
 
 # Same as Black.

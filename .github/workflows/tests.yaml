@@ -1,0 +1,72 @@
+name: Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - DEV
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write       # required to push to gh-pages branch
+  pull-requests: write  # required to post PR comments
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history required for gh-pages deployment
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Create virtual environment
+        run: python -m venv .venv
+
+      - name: Install dependencies
+        run: .venv/bin/pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          .venv/bin/python -m pytest \
+            --cov=extras \
+            --cov-report=term-missing \
+            --cov-report=html:coverage-report \
+            --cov-report=xml:coverage.xml \
+            --junitxml=test-results.xml
+
+      - name: Post coverage comment on PR
+        if: github.event_name == 'pull_request'
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-xml-coverage-path: coverage.xml
+          junitxml-path: test-results.xml
+          title: Coverage Report
+          badge-title: Coverage
+
+      - name: Write coverage summary to job log
+        if: always()
+        run: |
+          echo "## Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          .venv/bin/python -m coverage report >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload HTML coverage report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report/
+          if-no-files-found: error
+          retention-days: 30

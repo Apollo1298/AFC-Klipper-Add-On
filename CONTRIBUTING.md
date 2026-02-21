@@ -29,7 +29,7 @@ Thanks for your interest in contributing! Whether it's a bug report, new feature
 
 - If applicable, test your changes with your Klipper environment.
 - Make sure your code doesn't introduce errors or break existing functionality.
-- While formal unit tests may not be in place yet, please validate your changes manually.
+- Unit tests can be run by executing `python -m pytest` in the project root.
 
 ### Pull Requests
 

@@ -39,6 +39,8 @@ pip-delete-this-directory.txt
 
 # Unit test / coverage reports
 htmlcov/
+coverage-report/
+test-results.xml
 .tox/
 .nox/
 .coverage
@@ -134,3 +136,5 @@ uv.lock
 
 .idea/
 site/
+
+.claude/
