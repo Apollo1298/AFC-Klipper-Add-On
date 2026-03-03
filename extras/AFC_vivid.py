@@ -152,6 +152,12 @@ class AFC_vivid(afcBoxTurtle):
                     endstop_spec=lane.selector_endstop_name,
                     assist_active=False
                 )
+
+                if (lane.selector_cal_dis is not None
+                    and lane.selector_cal_dis != 0.0):
+                    self.selector_stepper_obj.move(lane.selector_cal_dis, lane.short_moves_speed,
+                                                   lane.short_moves_accel, False)
+
                 self.logger.debug(f"ViViD: Homing done, success:{homed}, distance:{distance}")
                 return homed, round(distance, 2)
 
@@ -175,15 +181,20 @@ class AFC_vivid(afcBoxTurtle):
         """
         self.lane_loading(lane)
         self.select_lane(lane, sel_prep=True)
+        num_tries = 0
         if not lane.calibrated_lane:
             distance = self.CALIBRATION_DISTANCE
             move_speed = SpeedMode.SHORT
         else:
             distance = lane.dist_hub
             move_speed = SpeedMode.LONG
-
-        homed, distance, warn = lane.move_to(distance, move_speed, assist_active=AssistActive.NO,
-                                             endstop=lane.load_endstop_name, use_homing=True)
+        homed = False
+        while (num_tries < 2
+               and lane.prep_state
+               and not lane.raw_load_state):
+            homed, distance, warn = lane.move_to(distance, move_speed, assist_active=AssistActive.NO,
+                                                 endstop=lane.load_endstop_name, use_homing=True)
+            num_tries += 1
         if homed:
             lane.loaded_to_hub = True
             if not lane.calibrated_lane:
@@ -196,6 +207,8 @@ class AFC_vivid(afcBoxTurtle):
             # Retract a bit so load sensor is not triggered
             lane.move_to( -10, SpeedMode.SHORT, use_homing=False)
             self.lane_loaded(lane)
+        else:
+            self.logger.error(f"Failed to move {lane.name} to load sensor.")
 
         self.selector_stepper_obj.do_enable(False)
         self.drive_stepper_obj.do_enable(False)
@@ -208,12 +221,14 @@ class AFC_vivid(afcBoxTurtle):
         # Do nothing and return
         return
 
-    def unselect_lane(self):
+    def unselect_lane(self, move_distance: float=50):
         """
-        Method for moving the selector 50mm to free filament in a lane, this is useful when
+        Move the selector by a configurable distance to free filament in a lane, e.g. when
         ejecting filament.
+
+        :param move_distance: Distance in millimeters to move the selector. Defaults to 50 mm.
         """
-        self.selector_stepper_obj.move(50, 100, 100, False)
+        self.selector_stepper_obj.move(move_distance, 100, 100, False)
 
     def eject_lane(self, lane: AFCLane):
         """
