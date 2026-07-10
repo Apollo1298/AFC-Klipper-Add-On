@@ -193,34 +193,3 @@ class TestTd1Prep:
         prep.afc.lanes = {"lane1": lane}
         prep._td1_prep(overrall_status=False)
         lane.get_td1_data.assert_not_called()
-
-
-# ── PSF pegged-at-boot guard ──────────────────────────────────────────────────
-
-class TestBufferExpectsFilament:
-    def test_empty_buffer_does_not_expect_filament(self):
-        prep = _make_prep()
-        buf = MagicMock()
-        buf.enable = False
-        buf.lanes = {"L1": MagicMock(tool_loaded=False)}
-        assert prep._buffer_expects_filament(buf) is False
-
-    def test_tool_loaded_lane_expects_filament(self):
-        prep = _make_prep()
-        buf = MagicMock()
-        buf.enable = False
-        buf.lanes = {"L1": MagicMock(tool_loaded=True)}
-        assert prep._buffer_expects_filament(buf) is True
-
-    def test_enabled_buffer_expects_filament(self):
-        prep = _make_prep()
-        buf = MagicMock()
-        buf.enable = True
-        buf.lanes = {}
-        assert prep._buffer_expects_filament(buf) is True
-
-    def test_missing_lanes_attr_safe(self):
-        prep = _make_prep()
-        buf = MagicMock(spec=["enable"])
-        buf.enable = False
-        assert prep._buffer_expects_filament(buf) is False

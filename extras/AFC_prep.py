@@ -253,14 +253,12 @@ class afcPrep:
 
         if self.afc.buffers:
             for buffer_name, buffer_obj in self.afc.buffers.items():
-                if (hasattr(buffer_obj, 'is_pegged') and buffer_obj.is_pegged()
-                        and self._buffer_expects_filament(buffer_obj)):
-                    # Empty single-spring PSF parks at a hard stop (|value|≈1); only
-                    # warn when filament should be mid-path (tool loaded / sync armed).
-                    self.logger.raw("<span class=warning--text>Warning: PSF sensor on {} is pegged at boot "
-                                    "(|value| > 0.95). Please check sensor calibration.</span>".format(buffer_name))
-                elif (hasattr(buffer_obj, 'advance_state')
-                      and buffer_obj.advance_state and buffer_obj.trailing_state):
+                # Do not warn on PSF is_pegged() at boot: single-spring hardware parks at a
+                # hard stop when empty (|value|≈1), and PREP may arm the buffer from saved
+                # tool_loaded state. Pegged is not a reliable calibration signal here.
+                if (hasattr(buffer_obj, 'advance_state')
+                      and buffer_obj.advance_state and buffer_obj.trailing_state
+                      and not hasattr(buffer_obj, 'is_pegged')):
                     self.logger.raw("<span class=warning--text>Warning: Both advance and trailing "
                                     "switches are triggered on Buffer {}. "
                                     "Please check your buffer switches or configuration.</span>".format(buffer_name))
@@ -269,13 +267,6 @@ class afcPrep:
         error_str = self.afc.verify_macro_positions()
         if error_str:
             self.logger.error(error_str)
-
-    def _buffer_expects_filament(self, buffer_obj):
-        """True when filament should be in the buffer path (not an empty hard-stop rest)."""
-        if getattr(buffer_obj, 'enable', False):
-            return True
-        lanes = getattr(buffer_obj, 'lanes', None) or {}
-        return any(getattr(lane, 'tool_loaded', False) for lane in lanes.values())
 
 def load_config(config):
     return afcPrep(config)
