@@ -584,31 +584,42 @@ class AFCSyncFeedback:
 
 
 class AFCAdcSwitchSensor:
-    """ADC threshold virtual endstop — adapted from Happy-Hare MmuAdcSwitchSensor."""
+    """Virtual endstop from AFCProportionalSensor thresholds — no ADC pin claim.
 
-    def __init__(self, printer, reactor, switch_pin, a_range, pullup=4700.):
+    Shares the sensor owned by [AFC_psf]; does not call register_adc_button.
+    mode is 'compression' or 'tension'.
+    """
+
+    def __init__(self, printer, buffer_name, mode, threshold):
         self.printer = printer
-        self.reactor = reactor
-        self._pin = switch_pin
+        self.reactor = printer.get_reactor()
+        self._buffer_name = buffer_name
+        self._mode = mode
+        self._threshold = float(threshold)
+        self._sensor = None
         self._steppers = []
         self._trigger_completion = None
         self._last_trigger_time = None
         self._homing = False
         self._triggered = False
-        self.filament_present = False
-        buttons = printer.lookup_object("buttons")
-        a_min, a_max = a_range
-        buttons.register_adc_button(
-            switch_pin, a_min, a_max, pullup, self._button_handler)
+        self._check_timer = None
+        self._poll_interval = 0.01
 
-    def _button_handler(self, eventtime, state):
-        self.filament_present = bool(state)
-        if self._trigger_completion is not None:
-            self._last_trigger_time = eventtime
-            self._trigger_completion.complete(True)
+    def _ensure_sensor(self):
+        if self._sensor is None:
+            psf = self.printer.lookup_object(
+                "AFC_psf {}".format(self._buffer_name))
+            self._sensor = psf.sensor
+        return self._sensor
+
+    def _is_active(self):
+        sensor = self._ensure_sensor()
+        if self._mode == "compression":
+            return sensor.is_compressed(self._threshold)
+        return sensor.is_tensioned(self._threshold)
 
     def query_endstop(self, print_time):
-        return self.filament_present
+        return self._is_active()
 
     def setup_pin(self, pin_type, pin_name):
         return self
@@ -619,18 +630,35 @@ class AFCAdcSwitchSensor:
     def get_steppers(self):
         return list(self._steppers)
 
-    def home_start(self, print_time, sample_time, sample_count, rest_time, triggered):
+    def _check_ready(self, eventtime):
+        if not self._homing:
+            return self.reactor.NEVER
+        if self._is_active() == self._triggered:
+            self._last_trigger_time = eventtime
+            if self._trigger_completion is not None:
+                self._trigger_completion.complete(True)
+            return self.reactor.NEVER
+        return eventtime + self._poll_interval
+
+    def home_start(self, print_time, sample_time, sample_count, rest_time,
+                   triggered):
         self._trigger_completion = self.reactor.completion()
         self._last_trigger_time = None
         self._homing = True
         self._triggered = triggered
-        if self.filament_present == self._triggered:
+        if self._is_active() == self._triggered:
             self._last_trigger_time = print_time
             self._trigger_completion.complete(True)
+        else:
+            self._check_timer = self.reactor.register_timer(
+                self._check_ready, self.reactor.NOW)
         return self._trigger_completion
 
     def home_wait(self, home_end_time):
         self._homing = False
+        if self._check_timer is not None:
+            self.reactor.unregister_timer(self._check_timer)
+            self._check_timer = None
         if self._trigger_completion is not None:
             self._trigger_completion.wait()
         self._trigger_completion = None

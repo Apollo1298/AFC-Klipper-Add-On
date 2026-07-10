@@ -5,6 +5,15 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+require_afc_psf_module() {
+  if [[ ! -f "${afc_path}/extras/AFC_psf.py" ]]; then
+    echo "❌ PSF requires extras/AFC_psf.py, but it was not found in ${afc_path}."
+    echo "   You are likely on a branch without PSF support (e.g. main)."
+    echo "   Check out psf-dev and re-run with: ./install-afc.sh -b psf-dev"
+    exit 1
+  fi
+}
+
 append_buffer_config() {
   local buffer_type="$1"
   local buffer_config=""
@@ -46,6 +55,7 @@ EOF
       buffer_name="Turtle_1"
       ;;
     "PSF")
+      require_afc_psf_module
       local psf_adc_pin="${2:-}"
       local psf_section_name="${3:-PSF}"
       if [ -z "$psf_adc_pin" ]; then
@@ -242,6 +252,7 @@ comment_afc_buffer_section() {
 configure_nightowl_psf() {
   # Convert NightOwl templates from TurtleNeck to PSF.
   # Uses global psf_adc_pin; prompts if unset.
+  require_afc_psf_module
   local hardware_cfg="${afc_config_dir}/AFC_Hardware.cfg"
   local unit_cfg
   unit_cfg=$(find "${afc_config_dir}" -maxdepth 1 -name 'AFC_NightOwl*.cfg' | head -n 1)

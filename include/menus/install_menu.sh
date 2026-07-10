@@ -245,7 +245,11 @@ fi
           "PSF") echo "None";;
           "None"|*) echo "TurtleNeck";;
         esac)
-        message="Buffer Type: $buffer_type" ;;
+        if [ "$buffer_type" == "PSF" ] && [[ ! -f "${afc_path}/extras/AFC_psf.py" ]]; then
+          message="Buffer Type: PSF (warning: extras/AFC_psf.py missing — use -b psf-dev)"
+        else
+          message="Buffer Type: $buffer_type"
+        fi ;;
       C)
         name_unit ;;
       D)

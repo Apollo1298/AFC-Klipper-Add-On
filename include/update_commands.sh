@@ -146,18 +146,47 @@ remove_t_macros() {
 
 function update_moonraker_config() {
   # Function to update the Moonraker configuration with AFC-Klipper-Add-On settings.
-  # Uses the global variables:
-  #   - MOONRAKER_PATH: The path to the Moonraker installation.
-  #   - MOONRAKER_UPDATE_CONFIG: The configuration settings to be added to Moonraker.
+  # Builds origin/primary_branch from the live clone when possible so fork installs
+  # (e.g. psf-dev) get the correct update_manager block without fork-only defaults.
 
   local moonraker_config
+  local mr_origin
+  local mr_branch
+  local upstream_ref
+  local upstream_remote
+  local moonraker_snippet
 
   # Check if the AFC-Klipper-Add-On configuration is already present in the Moonraker config file.
   moonraker_config=$(grep -c '\[update_manager afc-software\]' "${moonraker_config_file}" || true)
 
   if [ "$moonraker_config" -eq 0 ]; then
-    # If not present, append the configuration settings to the Moonraker config file.
-    echo -e -n "\n${moonraker_update_config}" >>"${moonraker_config_file}"
+    mr_branch="${branch}"
+    mr_origin="${gitrepo}"
+    if [[ -d "${afc_path}/.git" ]]; then
+      mr_branch="$(git -C "${afc_path}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "${branch}")"
+      mr_origin=""
+      upstream_ref="$(git -C "${afc_path}" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+      if [[ -n "${upstream_ref}" ]]; then
+        upstream_remote="${upstream_ref%%/*}"
+        mr_origin="$(git -C "${afc_path}" remote get-url "${upstream_remote}" 2>/dev/null || true)"
+      fi
+      if [[ -z "${mr_origin}" ]]; then
+        mr_origin="$(git -C "${afc_path}" remote get-url origin 2>/dev/null || echo "${gitrepo}")"
+      fi
+    fi
+
+    moonraker_snippet="
+[update_manager afc-software]
+type: git_repo
+path: ~/AFC-Klipper-Add-On
+origin: ${mr_origin}
+managed_services: ${klipper_service}
+primary_branch: ${mr_branch}
+is_system_service: False
+info_tags:
+    desc=AFC Klipper Add On
+"
+    echo -e -n "${moonraker_snippet}" >>"${moonraker_config_file}"
     # Restart the Moonraker service to apply the new configuration.
     restart_service moonraker
   fi

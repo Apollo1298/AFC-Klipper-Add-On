@@ -39,7 +39,8 @@ Add PSF section (use your calibrated values):
 
 ```ini
 [AFC_psf PSF]
-sync_feedback_analog_pin: ^NightOwl:PSF_ADC
+# ADC pin — do not use ^ (pullup); that is for digital switches only
+sync_feedback_analog_pin: NightOwl:PSF_ADC
 sync_feedback_analog_max_compression: 0.75
 sync_feedback_analog_max_tension: 0.25
 sync_feedback_analog_neutral_point: 0.50

@@ -23,7 +23,7 @@ function show_help() {
   echo "  -n <moonraker port>         Specify the port of the Moonraker server (default: 7125)"
   echo "  -s <klipper service name>   Specify the name of the Klipper service (default: klipper)"
   echo "  -p <printer config dir>     Specify the path to the printer config directory (default: ~/printer_data/config)"
-  echo "  -b <branch>                 Specify the branch to use (default: main)"
+  echo "  -b <branch>                 Specify the branch to use (default: current branch if clone exists, else main)"
   echo "  -y <klipper venv dir>       Specify the klipper python venv dir (default: ~/klippy-env/bin)"
   echo "  -h                          Display this help message"
   echo ""
@@ -76,8 +76,13 @@ clone_and_maybe_restart() {
       "${afc_path}"
     echo "✓ Clone complete."
   else
-    echo "→ Switching to branch '${branch}'…"
-    git -C "${afc_path}" checkout --quiet "${branch}"
+    if [[ "${branch_explicit}" == "True" ]]; then
+      echo "→ Switching to branch '${branch}'…"
+      git -C "${afc_path}" checkout --quiet "${branch}"
+    else
+      branch="$(git -C "${afc_path}" rev-parse --abbrev-ref HEAD)"
+      echo "→ Keeping current branch '${branch}' (pass -b to override)…"
+    fi
 
     check_for_uncommitted_changes
 

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from extras.AFC_psf import (
+    AFCAdcSwitchSensor,
     AFCProportionalSensor,
     AFCSyncFeedback,
     _FlowguardConfig,
@@ -145,3 +146,43 @@ class TestSyncLifecycle:
         sync.disable_buffer()
         assert sync.enable is False
         lane.update_rotation_distance.assert_called_with(1.0)
+
+
+class TestAdcSwitchSensor:
+    def _make_endstop(self, mode="compression", threshold=0.5, value=0.0):
+        from tests.conftest import MockReactor
+
+        sensor = _make_sensor()
+        sensor.value = value
+        psf = MagicMock()
+        psf.sensor = sensor
+        printer = MagicMock()
+        reactor = MockReactor()
+        completion = MagicMock()
+        completion.test = MagicMock(return_value=False)
+        reactor.completion = MagicMock(return_value=completion)
+        printer.get_reactor.return_value = reactor
+        printer.lookup_object.return_value = psf
+        endstop = AFCAdcSwitchSensor(printer, "PSF", mode, threshold)
+        return endstop, printer, sensor, completion
+
+    def test_query_compression_without_pin_claim(self):
+        endstop, printer, sensor, _ = self._make_endstop(value=0.6)
+        assert endstop.query_endstop(0) is True
+        printer.lookup_object.assert_called_with("AFC_psf PSF")
+        # No buttons / ADC registration
+        printer.lookup_object.assert_called_once()
+
+    def test_query_tension(self):
+        endstop, _, sensor, _ = self._make_endstop(
+            mode="tension", value=-0.6)
+        assert endstop.query_endstop(0) is True
+        sensor.value = 0.0
+        assert endstop.query_endstop(0) is False
+
+    def test_home_start_already_triggered(self):
+        endstop, _, _, completion = self._make_endstop(value=0.6)
+        result = endstop.home_start(1.0, 0.1, 1, 0.0, True)
+        assert result is completion
+        completion.complete.assert_called_once_with(True)
+        assert endstop.home_wait(2.0) == 1.0

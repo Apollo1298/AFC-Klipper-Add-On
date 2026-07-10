@@ -73,7 +73,8 @@ main() {
     m) moonraker_config_file=${OPTARG} ;;
     n) moonraker_port=${OPTARG} ;;
     s) klipper_service=${OPTARG} ;;
-    b) branch=${OPTARG} ;;
+    b) branch=${OPTARG}
+       branch_explicit=True ;;
     p) printer_config_dir=${OPTARG} ;;
     y) klipper_venv=${OPTARG} ;;
     t) test_mode=True ;;

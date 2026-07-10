@@ -468,22 +468,22 @@ class AFCExtruderStepper(AFCLane):
         buffer_type = self._resolve_buffer_type(extruder_name, buffer_name)
 
         if buffer_type == 'psf' and buffer_name:
+            # Real tool pins must register even if PSF virtual endstops fail
+            if tool_start_pin not in (None, 'buffer', 'psf'):
+                self._add_endstop('tool_start', tool_start_pin, 'tool_start')
+            if tool_end_pin is not None:
+                self._add_endstop('tool_end', tool_end_pin, 'tool_end')
             try:
                 from extras.AFC_psf import AFCAdcSwitchSensor
                 psf_cfg = self._config.getsection('AFC_psf {}'.format(buffer_name))
-                adc_pin = psf_cfg.get('sync_feedback_analog_pin')
-                reactor = self.printer.get_reactor()
-                comp_range = self._psf_adc_range(psf_cfg, for_compression=True)
-                tens_range = self._psf_adc_range(psf_cfg, for_compression=False)
+                comp_thresh = psf_cfg.getfloat('compression_threshold', 0.5)
+                tens_thresh = psf_cfg.getfloat('tension_threshold', 0.5)
                 comp_sensor = AFCAdcSwitchSensor(
-                    self.printer, reactor, adc_pin, comp_range)
+                    self.printer, buffer_name, 'compression', comp_thresh)
                 tens_sensor = AFCAdcSwitchSensor(
-                    self.printer, reactor, adc_pin, tens_range)
+                    self.printer, buffer_name, 'tension', tens_thresh)
                 if tool_start_pin in ('buffer', 'psf'):
                     self._add_custom_endstop('tool_start', comp_sensor, 'tool_start')
-                else:
-                    self._add_endstop('tool_start', tool_start_pin, 'tool_start')
-                self._add_endstop('tool_end', tool_end_pin, 'tool_end')
                 self._add_custom_endstop('buffer_advance', comp_sensor, 'buffer_adv')
                 self._add_custom_endstop('buffer_trailing', tens_sensor, 'buffer_trailing')
             except Exception as e:
@@ -637,27 +637,6 @@ class AFCExtruderStepper(AFCLane):
         if buf_type is None and extruder_name:
             buf_type = self._get_section_value('AFC_extruder', extruder_name, 'buffer_type')
         return buf_type or 'turtleneck'
-
-    def _psf_adc_range(self, psf_cfg, for_compression=True):
-        max_tension = psf_cfg.getfloat('sync_feedback_analog_max_tension', 1)
-        max_compression = psf_cfg.getfloat('sync_feedback_analog_max_compression', 0)
-        neutral = psf_cfg.getfloat(
-            'sync_feedback_analog_neutral_point',
-            (max_tension + max_compression) / 2.0)
-        threshold = psf_cfg.getfloat(
-            'compression_threshold' if for_compression else 'tension_threshold', 0.5)
-        margin = 0.02
-        if not (max_compression < max_tension):
-            if for_compression:
-                target = neutral + threshold * (max_compression - neutral)
-                return (max(0.0, target - margin), min(1.0, max_compression + margin))
-            target = neutral - threshold * (neutral - max_tension)
-            return (max(0.0, max_tension - margin), min(1.0, target + margin))
-        if for_compression:
-            target = neutral - threshold * (neutral - max_compression)
-            return (max(0.0, max_compression - margin), min(1.0, target + margin))
-        target = neutral + threshold * (max_tension - neutral)
-        return (max(0.0, target - margin), min(1.0, max_tension + margin))
 
     def do_homing_move(self, movepos: int, speed: int, accel: int, endstop_spec:str,
                        triggered=True, check_trigger=True, assist_active=True) -> tuple[bool, float]:
