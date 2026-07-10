@@ -161,11 +161,14 @@ install_afc() {
   if [ "$toolhead_sensor" == "Sensor" ]; then
     update_switch_pin "${afc_config_dir}/AFC_Hardware.cfg" "${toolhead_sensor_pin}"
   elif [ "$toolhead_sensor" == "Ramming" ]; then
-    update_switch_pin "${afc_config_dir}/AFC_Hardware.cfg" "buffer"
+    if [ "$buffer_type" == "PSF" ]; then
+      update_switch_pin "${afc_config_dir}/AFC_Hardware.cfg" "psf"
+    else
+      update_switch_pin "${afc_config_dir}/AFC_Hardware.cfg" "buffer"
+    fi
   fi
 
-  # When using Boxturtle as Installation Type then insert selected buffer configuration
-  # NightOwl uses Turtleneck as default for now
+  # Insert selected buffer configuration for BoxTurtle / NightOwl
   if [ "$installation_type" == "BoxTurtle (4-Lane)" ] || [ "$installation_type" == "BoxTurtle (8-Lane)" ]; then
     # Make sure the unit name is correct per the user choice
     if [ "$boxturtle_name" != "Turtle_1" ]; then
@@ -178,6 +181,22 @@ install_afc() {
     elif [ "$buffer_type" == "TurtleNeckV2" ]; then
       append_buffer_config "TurtleNeckV2"
       add_buffer_to_extruder "${afc_config_dir}/AFC_${boxturtle_name}.cfg" "${boxturtle_name}"
+    elif [ "$buffer_type" == "PSF" ]; then
+      query_psf_pins "^${boxturtle_name}:PSF_ADC"
+      append_buffer_config "PSF" "$psf_adc_pin" "${boxturtle_name}"
+      add_buffer_to_extruder "${afc_config_dir}/AFC_${boxturtle_name}.cfg" "${boxturtle_name}"
+      set_config_key "${afc_config_dir}/AFC_${boxturtle_name}.cfg" "[AFC_BoxTurtle ${boxturtle_name}]" "buffer_type" "psf"
+      if [ -f "${afc_config_dir}/AFC_Hardware.cfg" ]; then
+        set_config_key "${afc_config_dir}/AFC_Hardware.cfg" "[AFC_extruder extruder]" "buffer" "${boxturtle_name}"
+        set_config_key "${afc_config_dir}/AFC_Hardware.cfg" "[AFC_extruder extruder]" "buffer_type" "psf"
+        if [ "$toolhead_sensor" == "Ramming" ]; then
+          set_config_key "${afc_config_dir}/AFC_Hardware.cfg" "[AFC_extruder extruder]" "pin_tool_start" "psf"
+        fi
+      fi
+    fi
+  elif [ "$installation_type" == "NightOwl" ]; then
+    if [ "$buffer_type" == "PSF" ]; then
+      configure_nightowl_psf
     fi
   fi
   check_and_append_prep "${afc_config_dir}/AFC.cfg"
@@ -204,6 +223,17 @@ elif [ "$installation_type" == "NightOwl" ]; then
   message+="""
 - Ensure you enter either your CAN bus or serial information in the ${afc_config_dir}/AFC_NightOwl_1.cfg file
   """
+  if [ "$buffer_type" == "PSF" ]; then
+    message+="""
+- PSF selected: review [AFC_psf PSF] in ${afc_config_dir}/AFC_Hardware.cfg
+- Set sync_feedback_analog_* calibration values (from Happy-Hare or AFC_CALIBRATE_PSENSOR)
+- Confirm PSF_ADC pin alias in ${afc_config_dir}/mcu/ERB_2.0.cfg matches your wiring
+  """
+  else
+    message+="""
+- Review TurtleNeck buffer pins in ${afc_config_dir}/AFC_Hardware.cfg ([AFC_buffer TN])
+  """
+  fi
 elif [ "$installation_type" == "HTLF" ]; then
   message+="""
 - Ensure you enter either your CAN bus or serial information in the ${afc_config_dir}/AFC_${htlf_board_type}_${boxturtle_name}_1.cfg file.
@@ -230,6 +260,12 @@ fi
 if [ "$buffer_type" == "TurtleNeckV2" ]; then
   message+="""
 - Ensure you add the correct serial information to the ${afc_config_dir}/mcu/TurtleNeckv2.cfg file
+  """
+fi
+
+if [ "$buffer_type" == "PSF" ] && { [ "$installation_type" == "BoxTurtle (4-Lane)" ] || [ "$installation_type" == "BoxTurtle (8-Lane)" ]; }; then
+  message+="""
+- PSF selected: review [AFC_psf ${boxturtle_name}] in ${afc_config_dir}/AFC_Hardware.cfg and calibrate ADC limits
   """
 fi
 

@@ -144,3 +144,9 @@ klippy-test-results*.xml
 site/
 
 .claude/
+.cursor/
+
+# OS junk
+.DS_Store
+Thumbs.db
+

@@ -47,12 +47,13 @@ EOF
       ;;
     "PSF")
       local psf_adc_pin="${2:-}"
+      local psf_section_name="${3:-PSF}"
       if [ -z "$psf_adc_pin" ]; then
         echo "PSF buffer requires ADC pin as second argument"
         return 1
       fi
       buffer_config=$(cat <<EOF
-[AFC_psf TN]
+[AFC_psf ${psf_section_name}]
 sync_feedback_analog_pin: ${psf_adc_pin}
 sync_feedback_analog_max_compression: 0.75
 sync_feedback_analog_max_tension: 0.25
@@ -63,7 +64,7 @@ flowguard_enabled: True
 flowguard_max_relief: 8
 EOF
 )
-      buffer_name="TN"
+      buffer_name="${psf_section_name}"
       ;;
     *)
       echo "Invalid BUFFER_SYSTEM: $buffer_type"
@@ -143,4 +144,136 @@ query_tn_pins() {
 
   print_msg INFO "Set ${buffer_name} Advance pin: $tn_advance_pin"
   print_msg INFO "Set ${buffer_name} Trailing pin: $tn_trailing_pin"
+}
+
+query_psf_pins() {
+  # Query ADC pin for PSF proportional sync-feedback sensor.
+  # Arguments:
+  #   $1: default pin (optional)
+  local input
+  psf_adc_pin="${1:-^NightOwl:PSF_ADC}"
+
+  print_msg INFO "\nPlease enter the ADC pin for the PSF sensor:"
+  print_msg INFO "(Leave blank to use the default value)"
+  print_msg INFO "(Default: $psf_adc_pin)"
+
+  read -p "  Enter the PSF ADC pin (default: $psf_adc_pin): " -r input
+  if [ -n "$input" ]; then
+    psf_adc_pin="$input"
+  fi
+
+  print_msg INFO "Set PSF ADC pin: $psf_adc_pin"
+}
+
+set_config_key() {
+  # Set or insert a key under a [section] in a config file.
+  # Arguments:
+  #   $1: file_path
+  #   $2: section header including brackets, e.g. "[AFC_NightOwl NightOwl]"
+  #   $3: key
+  #   $4: value
+  local file_path="$1"
+  local section="$2"
+  local key="$3"
+  local value="$4"
+  local temp_file
+  temp_file=$(mktemp)
+  local in_section=false
+  local key_set=false
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" == "$section" ]]; then
+      in_section=true
+      echo "$line" >> "$temp_file"
+      continue
+    fi
+    if $in_section && [[ "$line" =~ ^\[.+\] ]]; then
+      if ! $key_set; then
+        echo "$key: $value" >> "$temp_file"
+        key_set=true
+      fi
+      in_section=false
+    fi
+    if $in_section && [[ "$line" =~ ^${key}: ]]; then
+      echo "$key: $value" >> "$temp_file"
+      key_set=true
+      continue
+    fi
+    echo "$line" >> "$temp_file"
+  done < "$file_path"
+
+  if $in_section && ! $key_set; then
+    echo "$key: $value" >> "$temp_file"
+  fi
+
+  mv "$temp_file" "$file_path"
+}
+
+comment_afc_buffer_section() {
+  # Comment out an [AFC_buffer name] section in AFC_Hardware.cfg
+  # Arguments:
+  #   $1: file_path
+  #   $2: buffer section name (e.g. TN)
+  local file_path="$1"
+  local section_name="$2"
+  local temp_file
+  temp_file=$(mktemp)
+  local in_section=false
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" =~ ^\[AFC_buffer[[:space:]]+${section_name}\]$ ]]; then
+      in_section=true
+      echo "# $line" >> "$temp_file"
+      continue
+    fi
+    if $in_section && [[ "$line" =~ ^\[.+\] ]]; then
+      in_section=false
+    fi
+    if $in_section && [[ -n "$line" ]] && [[ ! "$line" =~ ^# ]]; then
+      echo "# $line" >> "$temp_file"
+      continue
+    fi
+    echo "$line" >> "$temp_file"
+  done < "$file_path"
+
+  mv "$temp_file" "$file_path"
+}
+
+configure_nightowl_psf() {
+  # Convert NightOwl templates from TurtleNeck to PSF.
+  # Uses global psf_adc_pin; prompts if unset.
+  local hardware_cfg="${afc_config_dir}/AFC_Hardware.cfg"
+  local unit_cfg
+  unit_cfg=$(find "${afc_config_dir}" -maxdepth 1 -name 'AFC_NightOwl*.cfg' | head -n 1)
+
+  if [ -z "$psf_adc_pin" ]; then
+    query_psf_pins "^NightOwl:PSF_ADC"
+  fi
+
+  if [ -f "$hardware_cfg" ]; then
+    comment_afc_buffer_section "$hardware_cfg" "TN"
+    # Remove prior commented PSF block markers if re-running; append active section
+    if ! grep -qF "[AFC_psf PSF]" "$hardware_cfg"; then
+      append_buffer_config "PSF" "$psf_adc_pin" "PSF"
+    fi
+    set_config_key "$hardware_cfg" "[AFC_extruder extruder]" "buffer" "PSF"
+    set_config_key "$hardware_cfg" "[AFC_extruder extruder]" "buffer_type" "psf"
+    # Ramming mode uses PSF as the pre-extruder / ram sensor
+    if [ "${toolhead_sensor:-}" == "Ramming" ]; then
+      set_config_key "$hardware_cfg" "[AFC_extruder extruder]" "pin_tool_start" "psf"
+    fi
+  fi
+
+  if [ -n "$unit_cfg" ] && [ -f "$unit_cfg" ]; then
+    # Unit section name may be NightOwl or a renamed unit
+    local unit_section
+    unit_section=$(grep -m1 '^\[AFC_NightOwl ' "$unit_cfg" || true)
+    if [ -n "$unit_section" ]; then
+      set_config_key "$unit_cfg" "$unit_section" "buffer" "PSF"
+      set_config_key "$unit_cfg" "$unit_section" "buffer_type" "psf"
+    fi
+  fi
+
+  print_msg INFO "NightOwl configured for PSF (buffer: PSF, pin_tool_start: psf)"
+  print_msg INFO "Update calibration values in [AFC_psf PSF] after AFC_CALIBRATE_PSENSOR or from Happy-Hare values."
 }

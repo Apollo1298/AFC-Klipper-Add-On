@@ -2,19 +2,24 @@
 
 This guide covers migrating an AFC NightOwl/ERB setup from TurtleNeck (TN) binary switches to PSF analog sync-feedback. TN and PSF can coexist in the codebase; each printer uses one via `buffer_type`.
 
-## Prerequisites
+## Installer
 
-- PSF hardware installed in the bowden path (see [Proportional Sync-Feedback Sensor](https://github.com/Kashine6/Proportional-Sync-Feedback-Sensor))
-- ADC-capable MCU pin on ERB (NightOwl board)
-- Existing HH calibration values are transferable
+On a fresh install (`install-afc.sh`):
 
-## Config changes
+1. Choose installation type (**NightOwl** or BoxTurtle).
+2. Press **B** to cycle buffer type: `TurtleNeck` → `TurtleNeckV2` → `PSF` → `None`.
+3. For NightOwl + PSF, the installer comments out `[AFC_buffer TN]`, writes `[AFC_psf PSF]`, and sets `buffer_type: psf` on the unit/extruder.
+4. If using ramming (option **9**), set `pin_tool_start: psf` (installer does this when buffer type is PSF).
+
+You will be prompted for the PSF ADC pin (NightOwl default: `^NightOwl:PSF_ADC`).
+
+## Manual config changes
 
 ### 1. Unit section
 
 ```ini
 [AFC_NightOwl NightOwl]
-buffer: TN
+buffer: PSF
 buffer_type: psf
 ```
 
@@ -23,11 +28,11 @@ buffer_type: psf
 ```ini
 [AFC_extruder extruder]
 pin_tool_start: psf
-buffer: TN
+buffer: PSF
 buffer_type: psf
 ```
 
-### 3. Replace `[AFC_buffer TN]` with `[AFC_psf TN]`
+### 3. Replace `[AFC_buffer TN]` with `[AFC_psf PSF]`
 
 Comment or remove the TurtleNeck section:
 
@@ -40,7 +45,7 @@ Comment or remove the TurtleNeck section:
 Add PSF section (use your calibrated values):
 
 ```ini
-[AFC_psf TN]
+[AFC_psf PSF]
 sync_feedback_analog_pin: ^NightOwl:PSF_ADC
 sync_feedback_analog_max_compression: 0.75
 sync_feedback_analog_max_tension: 0.25
@@ -65,7 +70,7 @@ PSF_ADC=gpio1
 Run on the printer after config update:
 
 ```
-AFC_CALIBRATE_PSENSOR PSF=TN
+AFC_CALIBRATE_PSENSOR PSF=PSF
 ```
 
 Or copy values from an existing Happy-Hare `mmu_hardware.cfg` block.
@@ -73,7 +78,7 @@ Or copy values from an existing Happy-Hare `mmu_hardware.cfg` block.
 Query live readings:
 
 ```
-QUERY_PSENSOR PSF=TN
+QUERY_PSENSOR PSF=PSF
 ```
 
 ## G-code reference
@@ -96,4 +101,4 @@ In PSF mode, `filament_error_sensitivity` on `[AFC_buffer]` is not used. FlowGua
 
 ## Reverting to TurtleNeck
 
-Set `buffer_type: turtleneck`, restore `[AFC_buffer TN]`, set `pin_tool_start: buffer`, and remove `[AFC_psf TN]`.
+Set `buffer_type: turtleneck`, restore `[AFC_buffer TN]`, set `pin_tool_start: buffer`, and remove `[AFC_psf PSF]`.

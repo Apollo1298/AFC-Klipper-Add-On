@@ -192,7 +192,7 @@ fi
       for i in "${!toggle_items[@]}"; do
         printf "%s. %s : %s\n" "$((i + 1))" "${toggle_labels[$i]}" "${!toggle_items[$i]}"
       done
-      printf "9. Use a toolhead sensor or ramming with a TurtleNeck buffer? : %s \n" "$toolhead_sensor"
+      printf "9. Use a toolhead sensor or ramming with a buffer/PSF? : %s \n" "$toolhead_sensor"
       if [ "$toolhead_sensor" == "Sensor" ]; then
         if [ "$toolhead_sensor_pin" == "Unknown" ]; then
         printf "A. Toolhead sensor pin: ${RED}%s${RESET} \n" "$toolhead_sensor_pin"
@@ -204,6 +204,9 @@ fi
         "BoxTurtle (4-Lane)"|"BoxTurtle (8-Lane)")
           printf "B. Buffer type: %s \n" "$buffer_type"
           printf "C. BoxTurtle Name: %s \n" "$boxturtle_name"
+          ;;
+        "NightOwl")
+          printf "B. Buffer type: %s \n" "$buffer_type"
           ;;
         "HTLF")
           printf "D. HTLF Board Type: %s \n" "$htlf_board_type"
@@ -231,12 +234,17 @@ fi
         toggle_option "${toggle_items[$index]}" "${toggle_labels[$index]}" ;;
       9)
         toolhead_sensor=$([ "$toolhead_sensor" == "Sensor" ] && echo "Ramming" || echo "Sensor")
-        message=$([ "$toolhead_sensor" == "Sensor" ] && echo "Using toolhead sensor" || echo "Using ramming with a TurtleNeck buffer") ;;
+        message=$([ "$toolhead_sensor" == "Sensor" ] && echo "Using toolhead sensor" || echo "Using ramming with buffer/PSF") ;;
       A)
         read -p "Enter toolhead sensor pin (Example: nhk:gpio13): " toolhead_sensor_pin
         message="Toolhead sensor pin set to $toolhead_sensor_pin" ;;
       B)
-        buffer_type=$(case "$buffer_type" in "TurtleNeck") echo "TurtleNeckV2";; "TurtleNeckV2") echo "None";; "None"|*) echo "TurtleNeck";; esac)
+        buffer_type=$(case "$buffer_type" in
+          "TurtleNeck") echo "TurtleNeckV2";;
+          "TurtleNeckV2") echo "PSF";;
+          "PSF") echo "None";;
+          "None"|*) echo "TurtleNeck";;
+        esac)
         message="Buffer Type: $buffer_type" ;;
       C)
         name_unit ;;
