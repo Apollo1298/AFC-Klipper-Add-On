@@ -4,14 +4,7 @@ This guide covers migrating an AFC NightOwl/ERB setup from TurtleNeck (TN) binar
 
 ## Installer
 
-On a fresh install (`install-afc.sh`):
-
-1. Choose installation type (**NightOwl** or BoxTurtle).
-2. Press **B** to cycle buffer type: `TurtleNeck` → `TurtleNeckV2` → `PSF` → `None`.
-3. For NightOwl + PSF, the installer comments out `[AFC_buffer TN]`, writes `[AFC_psf PSF]`, and sets `buffer_type: psf` on the unit/extruder.
-4. If using ramming (option **9**), set `pin_tool_start: psf` (installer does this when buffer type is PSF).
-
-You will be prompted for the PSF ADC pin (NightOwl default: `^NightOwl:PSF_ADC`).
+See [PSF_Install.md](PSF_Install.md) for `install-afc.sh` steps (NightOwl / BoxTurtle, buffer type **B** → PSF).
 
 ## Manual config changes
 
