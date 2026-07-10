@@ -124,6 +124,7 @@ class AFCLane:
         self.hub: str           = config.get('hub',None)                                # Hub name(AFC_hub) that belongs to this stepper, overrides hub that is set in unit(AFC_BoxTurtle/NightOwl/etc) section.
         # Overrides buffers set at the unit and extruder level
         self.buffer_name: str   = config.get("buffer", None)                            # Buffer name(AFC_buffer) that belongs to this stepper, overrides buffer that is set in extruder(AFC_extruder) or unit(AFC_BoxTurtle/NightOwl/etc) sections.
+        self.buffer_type: str   = config.get("buffer_type", None)                      # turtleneck or psf; inherits from unit when unset
         self.unit               = unit.split(':')[0]
         try:
             self.index              = int(unit.split(':')[1])
@@ -464,18 +465,26 @@ class AFCLane:
 
         # Use buffer defined in stepper and override buffers that maybe set at the UNIT or extruder levels
         self.buffer_obj = self.unit_obj.buffer_obj
+        if self.buffer_type is None:
+            self.buffer_type = self.unit_obj.buffer_type
         if self.buffer_name is not None:
             try:
-                self.buffer_obj = self.printer.lookup_object("AFC_buffer {}".format(self.buffer_name))
+                from extras.AFC_psf import lookup_sync_feedback
+                self.buffer_obj = lookup_sync_feedback(
+                    self.printer, self.buffer_name, self.buffer_type)
             except:
-                error_string = 'Error: No config found for buffer: {buffer} in [AFC_stepper {stepper}]. Please make sure [AFC_buffer {buffer}] section exists in your config'.format(
-                    buffer=self.buffer_name, stepper=self.name )
+                section = 'AFC_psf' if self.buffer_type == 'psf' else 'AFC_buffer'
+                error_string = 'Error: No config found for buffer: {buffer} in [AFC_stepper {stepper}]. Please make sure [{section} {buffer}] section exists in your config'.format(
+                    buffer=self.buffer_name, stepper=self.name, section=section )
                 raise error(error_string)
 
         # Checking if buffer was defined in extruder if not defined in unit/stepper
-        elif self.buffer_obj is None and self.extruder_obj.tool_start == "buffer":
+        elif self.buffer_obj is None and self.extruder_obj.tool_start in ("buffer", "psf"):
             if self.extruder_obj.buffer_name is not None:
-                self.buffer_obj = self.printer.lookup_object("AFC_buffer {}".format(self.extruder_obj.buffer_name))
+                from extras.AFC_psf import lookup_sync_feedback
+                buf_type = getattr(self.extruder_obj, 'buffer_type', self.buffer_type)
+                self.buffer_obj = lookup_sync_feedback(
+                    self.printer, self.extruder_obj.buffer_name, buf_type)
             else:
                 error_string = 'Error: Buffer was defined as tool_start in [AFC_extruder {extruder}] config, but buffer variable has not been configured. Please add buffer variable to either [AFC_extruder {extruder}], [AFC_stepper {name}] or [AFC_{unit_type} {unit_name}] section in your config file'.format(
                     extruder=self.extruder_obj.name, name=self.name, unit_type=self.unit_obj.type.replace("_", ""), unit_name=self.unit_obj.name )
@@ -1208,7 +1217,11 @@ class AFCLane:
         :param disable_fault: Set to True to disable fault detection when enabling buffer
         """
         if self.buffer_obj is not None:
-            if disable_fault: self.buffer_obj.disable_fault_sensitivity()
+            if disable_fault:
+                if hasattr(self.buffer_obj, 'deactivate_flowguard'):
+                    self.buffer_obj.deactivate_flowguard()
+                else:
+                    self.buffer_obj.disable_fault_sensitivity()
             self.buffer_obj.enable_buffer()
         self.espooler.enable_timer()
         self.enable_weight_timer()
@@ -1219,7 +1232,10 @@ class AFCLane:
         fault timer and multiplier.
         """
         if self.buffer_obj is not None:
-            self.buffer_obj.restore_fault_sensitivity()
+            if hasattr(self.buffer_obj, 'activate_flowguard'):
+                self.buffer_obj.activate_flowguard()
+            else:
+                self.buffer_obj.restore_fault_sensitivity()
             self.buffer_obj.enable_buffer()
 
     def disable_buffer(self):
@@ -1251,6 +1267,8 @@ class AFCLane:
         """
         if self.extruder_obj.tool_start == "buffer":
             return self.buffer_obj.advance_state
+        elif self.extruder_obj.tool_start == "psf":
+            return not self.buffer_obj.is_compressed()
         else:
             return self.extruder_obj.tool_start_state
 
@@ -1261,7 +1279,7 @@ class AFCLane:
         :return AFCHomingPoints: Returns `AFCHomingPoints.BUFFER` if users tool_start is set to buffer
             else returns `AFCHomingPoints.TOOL`
         """
-        if self.extruder_obj.tool_start == "buffer":
+        if self.extruder_obj.tool_start in ("buffer", "psf"):
             return AFCHomingPoints.BUFFER
         else:
             return AFCHomingPoints.TOOL
@@ -1271,6 +1289,8 @@ class AFCLane:
         Helper function to get trailing status, returns none if buffer is not defined
         """
         if self.buffer_obj is not None:
+            if hasattr(self.buffer_obj, 'is_compressed'):
+                return self.buffer_obj.is_compressed()
             return self.buffer_obj.trailing_state
         else: return None
 

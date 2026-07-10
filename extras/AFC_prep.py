@@ -253,7 +253,11 @@ class afcPrep:
 
         if self.afc.buffers:
             for buffer_name, buffer_obj in self.afc.buffers.items():
-                if buffer_obj.advance_state and buffer_obj.trailing_state:
+                if hasattr(buffer_obj, 'is_pegged') and buffer_obj.is_pegged():
+                    self.logger.raw("<span class=warning--text>Warning: PSF sensor on {} is pegged at boot "
+                                    "(|value| > 0.95). Please check sensor calibration.</span>".format(buffer_name))
+                elif (hasattr(buffer_obj, 'advance_state')
+                      and buffer_obj.advance_state and buffer_obj.trailing_state):
                     self.logger.raw("<span class=warning--text>Warning: Both advance and trailing "
                                     "switches are triggered on Buffer {}. "
                                     "Please check your buffer switches or configuration.</span>".format(buffer_name))

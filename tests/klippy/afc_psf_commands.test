@@ -1,0 +1,12 @@
+# AFC PSF commands integration test
+#
+# Verifies that AFC_psf GCode commands register and execute correctly.
+
+DICTIONARY stm32h723.dict
+CONFIG afc_with_psf.cfg
+
+QUERY_PSENSOR PSF=psf1
+ENABLE_BUFFER BUFFER=psf1
+DISABLE_BUFFER BUFFER=psf1
+AFC_FLOWGUARD PSF=psf1 ENABLE=0
+AFC_FLOWGUARD PSF=psf1 ENABLE=1

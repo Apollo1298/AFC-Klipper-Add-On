@@ -1385,7 +1385,7 @@ class afc:
                 # Check if ramming is enabled, if it is, go through ram load sequence.
                 # Lane will load until Advance sensor is True
                 # After the tool_stn distance the lane will retract off the sensor to confirm load and reset buffer
-                if cur_extruder.tool_start == "buffer":
+                if cur_extruder.tool_start in ("buffer", "psf"):
                     cur_lane.unsync_to_extruder()
                     load_checks = 0
                     while cur_lane.get_toolhead_pre_sensor_state():
@@ -1607,7 +1607,7 @@ class afc:
 
             # Attempt to unload the filament from the extruder, retrying if needed.
             num_tries = 0
-            if cur_extruder.tool_start == "buffer":
+            if cur_extruder.tool_start in ("buffer", "psf"):
                 # if ramming is enabled, AFC will retract to collapse buffer before unloading
                 cur_lane.unsync_to_extruder()
                 while not cur_lane.get_trailing() and self.tool_max_unload_attempts > 0:
@@ -1971,6 +1971,10 @@ class afc:
         str["extruders"] = list(self.tools.keys())
         str["hubs"] = list(self.hubs.keys())
         str["buffers"] = list(self.buffers.keys())
+        str["psf"] = {}
+        for name, buf in self.buffers.items():
+            if getattr(buf, "buffer_type", "turtleneck") == "psf":
+                str["psf"][name] = buf.get_status(eventtime)
         str["message"] = self._get_message()
         str["led_state"] = self.led_state
         return str

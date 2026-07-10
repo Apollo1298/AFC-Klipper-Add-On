@@ -461,23 +461,52 @@ class AFCExtruderStepper(AFCLane):
         tool_start_pin = self._get_section_value('AFC_extruder', extruder_name, 'pin_tool_start')
         tool_end_pin   = self._get_section_value('AFC_extruder', extruder_name, 'pin_tool_end')
 
-        # Buffer endstops from AFC_buffer (advance/trailing), inherit from extruder or unit if needed
+        # Buffer endstops from AFC_buffer or AFC_psf, inherit from extruder or unit if needed
         buffer_name = getattr(self, 'buffer_name', None)
         if not buffer_name:
             buffer_name = self._get_section_value('AFC_extruder', extruder_name, 'buffer') or self._inherit_from_unit('buffer')
-        buffer_adv_pin   = self._get_section_value('AFC_buffer', buffer_name, 'advance_pin')
-        buffer_trail_pin = self._get_section_value('AFC_buffer', buffer_name, 'trailing_pin')
+        buffer_type = self._resolve_buffer_type(extruder_name, buffer_name)
+
+        if buffer_type == 'psf' and buffer_name:
+            try:
+                from extras.AFC_psf import AFCAdcSwitchSensor
+                psf_cfg = self._config.getsection('AFC_psf {}'.format(buffer_name))
+                adc_pin = psf_cfg.get('sync_feedback_analog_pin')
+                reactor = self.printer.get_reactor()
+                comp_range = self._psf_adc_range(psf_cfg, for_compression=True)
+                tens_range = self._psf_adc_range(psf_cfg, for_compression=False)
+                comp_sensor = AFCAdcSwitchSensor(
+                    self.printer, reactor, adc_pin, comp_range)
+                tens_sensor = AFCAdcSwitchSensor(
+                    self.printer, reactor, adc_pin, tens_range)
+                if tool_start_pin in ('buffer', 'psf'):
+                    self._add_custom_endstop('tool_start', comp_sensor, 'tool_start')
+                else:
+                    self._add_endstop('tool_start', tool_start_pin, 'tool_start')
+                self._add_endstop('tool_end', tool_end_pin, 'tool_end')
+                self._add_custom_endstop('buffer_advance', comp_sensor, 'buffer_adv')
+                self._add_custom_endstop('buffer_trailing', tens_sensor, 'buffer_trailing')
+            except Exception as e:
+                self.logger.info(
+                    "PSF endstop setup failed for {}: {}".format(self.name, e))
+        else:
+            buffer_adv_pin   = self._get_section_value('AFC_buffer', buffer_name, 'advance_pin')
+            buffer_trail_pin = self._get_section_value('AFC_buffer', buffer_name, 'trailing_pin')
+            # Check to verify that hub is not a virtual sensor
+            if hub_pin is not None and hub_pin.lower() != "virtual":
+                self._add_endstop('hub', hub_pin, 'hub')
+            if tool_start_pin != 'buffer':
+                self._add_endstop('tool_start', tool_start_pin, 'tool_start')
+            else:
+                self._add_endstop('tool_start', buffer_adv_pin, 'tool_start')
+            self._add_endstop('tool_end', tool_end_pin, 'tool_end')
+            self._add_endstop('buffer_advance', buffer_adv_pin, 'buffer_adv')
+            self._add_endstop('buffer_trailing', buffer_trail_pin, 'buffer_trailing')
+            return
 
         # Check to verify that hub is not a virtual sensor
-        if hub_pin.lower() != "virtual":
+        if hub_pin is not None and hub_pin.lower() != "virtual":
             self._add_endstop('hub', hub_pin, 'hub')
-        if tool_start_pin != 'buffer':
-            self._add_endstop('tool_start', tool_start_pin, 'tool_start')
-        else:
-            self._add_endstop('tool_start', buffer_adv_pin, 'tool_start')
-        self._add_endstop('tool_end', tool_end_pin, 'tool_end')
-        self._add_endstop('buffer_advance', buffer_adv_pin, 'buffer_adv')
-        self._add_endstop('buffer_trailing', buffer_trail_pin, 'buffer_trailing')
 
     def _inherit_from_unit(self, target_key: str) -> Optional[str]:
         """
@@ -492,7 +521,7 @@ class AFCExtruderStepper(AFCLane):
             return None
 
         ignore_prefixes = (
-            'AFC_hub ', 'AFC_extruder ', 'AFC_buffer ',
+            'AFC_hub ', 'AFC_extruder ', 'AFC_buffer ', 'AFC_psf ',
             'AFC_stepper ', 'AFC_functions ', 'AFC_stats ', 'AFC_respond '
         )
 
@@ -578,6 +607,57 @@ class AFCExtruderStepper(AFCLane):
             pass
         self.logger.debug(f"{self.name} adding endstop {key}:{name}:{pin}") # TODO:remove once fully tested on toolchanger
         self._endstops[key] = (mcu_endstop, name)
+
+    def _add_custom_endstop(self, key: str, mcu_endstop, suffix: str, fullname=None):
+        """Register a pre-built endstop object (e.g. ADC threshold sensor)."""
+        single_key_aliases = {'hub', 'tool_start', 'tool_end', 'buffer_advance', 'buffer_trailing'}
+        if fullname:
+            name = fullname
+        elif key in single_key_aliases:
+            name = '{}'.format(suffix)
+        else:
+            name = '{}_{}'.format(self.name, suffix)
+        try:
+            self._qes.register_endstop(mcu_endstop, name)
+        except Exception:
+            self.logger.info(f"Error when registering {name} as endstop for {self.lane}")
+        try:
+            mcu_endstop.add_stepper(self.extruder_stepper.stepper)
+        except Exception:
+            self.logger.info(f"Error when registering stepper {self.lane}")
+        self.logger.debug(f"{self.name} adding custom endstop {key}:{name}")
+        self._endstops[key] = (mcu_endstop, name)
+
+    def _resolve_buffer_type(self, extruder_name, buffer_name):
+        buf_type = getattr(self, 'buffer_type', None)
+        if buf_type is None:
+            buf_type = self._get_section_value('AFC_stepper', self.name, 'buffer_type')
+        if buf_type is None:
+            buf_type = self._inherit_from_unit('buffer_type')
+        if buf_type is None and extruder_name:
+            buf_type = self._get_section_value('AFC_extruder', extruder_name, 'buffer_type')
+        return buf_type or 'turtleneck'
+
+    def _psf_adc_range(self, psf_cfg, for_compression=True):
+        max_tension = psf_cfg.getfloat('sync_feedback_analog_max_tension', 1)
+        max_compression = psf_cfg.getfloat('sync_feedback_analog_max_compression', 0)
+        neutral = psf_cfg.getfloat(
+            'sync_feedback_analog_neutral_point',
+            (max_tension + max_compression) / 2.0)
+        threshold = psf_cfg.getfloat(
+            'compression_threshold' if for_compression else 'tension_threshold', 0.5)
+        margin = 0.02
+        if not (max_compression < max_tension):
+            if for_compression:
+                target = neutral + threshold * (max_compression - neutral)
+                return (max(0.0, target - margin), min(1.0, max_compression + margin))
+            target = neutral - threshold * (neutral - max_tension)
+            return (max(0.0, max_tension - margin), min(1.0, target + margin))
+        if for_compression:
+            target = neutral - threshold * (neutral - max_compression)
+            return (max(0.0, max_compression - margin), min(1.0, target + margin))
+        target = neutral + threshold * (max_tension - neutral)
+        return (max(0.0, target - margin), min(1.0, max_tension + margin))
 
     def do_homing_move(self, movepos: int, speed: int, accel: int, endstop_spec:str,
                        triggered=True, check_trigger=True, assist_active=True) -> tuple[bool, float]:

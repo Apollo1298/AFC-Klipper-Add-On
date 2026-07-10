@@ -70,6 +70,7 @@ class afcUnit:
         self.hub                         = config.get("hub", None)                                           # Hub name(AFC_hub) that belongs to this unit, can be overridden in AFC_stepper section
         self.extruder                    = config.get("extruder", None)                                      # Extruder name(AFC_extruder) that belongs to this unit, can be overridden in AFC_stepper section
         self.buffer_name                 = config.get('buffer', None)                                        # Buffer name(AFC_buffer) that belongs to this unit, can be overridden in AFC_stepper section
+        self.buffer_type                 = config.get('buffer_type', 'turtleneck')                           # turtleneck or psf sync feedback type
         self.remember_spool              = config.get('remember_spool', False)                               # Turns on/off ability to remember last ejected spool values for all lanes in this unit, can be overridden in AFC_stepper section
         self.led_fault                   = config.get('led_fault', self.afc.led_fault)                       # LED color to set when faults occur in lane        (R,G,B,W) 0 = off, 1 = full brightness. Setting value here overrides values set in AFC.cfg file
         self.led_ready                   = config.get('led_ready', self.afc.led_ready)                       # LED color to set when lane is ready               (R,G,B,W) 0 = off, 1 = full brightness. Setting value here overrides values set in AFC.cfg file
@@ -215,10 +216,13 @@ class afcUnit:
         # Error checking for buffer
         if self.buffer_name is not None:
             try:
-                self.buffer_obj = self.printer.lookup_object('AFC_buffer {}'.format(self.buffer_name))
+                from extras.AFC_psf import lookup_sync_feedback
+                self.buffer_obj = lookup_sync_feedback(
+                    self.printer, self.buffer_name, self.buffer_type)
             except:
-                error_string = 'Error: No config found for buffer: {buffer} in [AFC_{unit_type} {unit_name}]. Please make sure [AFC_buffer {buffer}] section exists in your config'.format(
-                    buffer=self.buffer_name, unit_type=self.type.replace("_", ""), unit_name=self.name )
+                section = 'AFC_psf' if self.buffer_type == 'psf' else 'AFC_buffer'
+                error_string = 'Error: No config found for buffer: {buffer} in [AFC_{unit_type} {unit_name}]. Please make sure [{section} {buffer}] section exists in your config'.format(
+                    buffer=self.buffer_name, unit_type=self.type.replace("_", ""), unit_name=self.name, section=section )
                 raise config_error(error_string)
 
         # Send out event so lanes can store units object

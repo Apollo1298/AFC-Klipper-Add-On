@@ -45,6 +45,26 @@ EOF
 )
       buffer_name="Turtle_1"
       ;;
+    "PSF")
+      local psf_adc_pin="${2:-}"
+      if [ -z "$psf_adc_pin" ]; then
+        echo "PSF buffer requires ADC pin as second argument"
+        return 1
+      fi
+      buffer_config=$(cat <<EOF
+[AFC_psf TN]
+sync_feedback_analog_pin: ${psf_adc_pin}
+sync_feedback_analog_max_compression: 0.75
+sync_feedback_analog_max_tension: 0.25
+sync_feedback_analog_neutral_point: 0.50
+sync_multiplier_low: 0.95
+sync_multiplier_high: 1.05
+flowguard_enabled: True
+flowguard_max_relief: 8
+EOF
+)
+      buffer_name="TN"
+      ;;
     *)
       echo "Invalid BUFFER_SYSTEM: $buffer_type"
       return 1
