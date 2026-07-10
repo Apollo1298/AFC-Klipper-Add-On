@@ -147,6 +147,32 @@ class TestSyncLifecycle:
         assert sync.enable is False
         lane.update_rotation_distance.assert_called_with(1.0)
 
+    def test_update_filament_error_pos_resets_flowguard(self):
+        """TN API shim must clear FlowGuard without forcing it active."""
+        sync = AFCSyncFeedback.__new__(AFCSyncFeedback)
+        sync.flowguard_enabled = True
+        cfg = _FlowguardConfig()
+        eng = _FlowguardEngine(cfg, lambda d: 0.0)
+        eng._comp_motion_mm = 5.0
+        eng._relief_comp_mm = 3.0
+        eng._armed = True
+        eng.deactivate()
+        sync.flowguard = eng
+
+        sync.update_filament_error_pos()
+
+        assert eng._comp_motion_mm == 0.0
+        assert eng._relief_comp_mm == 0.0
+        assert eng._armed is False
+        assert eng._active is False
+
+    def test_update_filament_error_pos_noop_when_disabled(self):
+        sync = AFCSyncFeedback.__new__(AFCSyncFeedback)
+        sync.flowguard_enabled = False
+        sync.flowguard = MagicMock()
+        sync.update_filament_error_pos()
+        sync.flowguard.reset.assert_not_called()
+
 
 class TestAdcSwitchSensor:
     def _make_endstop(self, mode="compression", threshold=0.5, value=0.0):

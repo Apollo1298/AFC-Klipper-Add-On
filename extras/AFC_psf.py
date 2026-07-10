@@ -418,6 +418,19 @@ class AFCSyncFeedback:
     def deactivate_flowguard(self):
         self.flowguard.deactivate()
 
+    def update_filament_error_pos(self):
+        """Reset FlowGuard after PRINT_START purge (TN buffer API compatibility).
+
+        TurtleNeck uses this to re-baseline extruder fault position; PSF clears
+        FlowGuard accumulators so purge motion does not cause a false trip.
+        Preserves whether FlowGuard is currently active.
+        """
+        if not self.flowguard_enabled:
+            return
+        was_active = self.flowguard._active
+        self.flowguard.reset()
+        self.flowguard._active = was_active
+
     def enable_buffer(self):
         self.enable = True
         self._current_multiplier = 1.0
